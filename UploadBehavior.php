@@ -10,6 +10,7 @@ use yii\base\InvalidConfigException;
 use yii\db\ActiveRecord;
 use yii\db\BaseActiveRecord;
 use yii\web\UploadedFile;
+use yii\helpers\ArrayHelper;
 
 /**
  * UploadBehavior automatically uploads a file and adds a new row in the uploaded files table.
@@ -133,7 +134,11 @@ class UploadBehavior extends Behavior
     {
         /** @var BaseActiveRecord $model */
         $model = $this->owner;
-
+        if (!empty($this->path))
+        {
+            $this->path=$this->resolvePath($this->path);
+           
+        }
         if (in_array($model->scenario, $this->scenarios))
         {
             if (($file = $model->{$this->attribute}) instanceof UploadedFile)
@@ -161,6 +166,59 @@ class UploadBehavior extends Behavior
                 }
             }
         }
+    }
+    public function resolvePath($path)
+    {
+        $path = Yii::getAlias($path);
+        $pi = pathinfo($this->owner->{$this->attribute});
+        $fileName = ArrayHelper::getValue($pi, 'filename');
+        $extension = strtolower(ArrayHelper::getValue($pi, 'extension'));
+        return preg_replace_callback('|\[\[([\w\_/]+)\]\]|', function ($matches) use ($fileName, $extension) {
+            $name = $matches[1];
+            switch ($name) {
+                case 'extension':
+                    return $extension;
+                case 'filename':
+                    return $fileName;
+                case 'basename':
+                    return  $fileName . '.' . $extension;
+                case 'app_root':
+                    return Yii::getAlias('@app');
+                case 'web_root':
+                    return Yii::getAlias('@webroot');
+                case 'base_url':
+                    return Yii::getAlias('@web');
+                case 'model':
+                    $r = new \ReflectionClass($this->owner->className());
+                    return lcfirst($r->getShortName());
+                case 'attribute':
+                    return lcfirst($this->attribute);
+                case 'article_pk':
+                case 'article_id':
+                    $pk = $this->owner->article_id;
+                    return $pk;
+                case 'assoc_type':
+                    $pk = Yii::$app->sitehelper->articles_files_types_arr[$this->owner->assoc_type];
+                    return $pk;
+                case 'id':
+                case 'pk':
+                    $pk = implode('_', $this->owner->getPrimaryKey(true));
+                    return lcfirst($pk);
+                case 'id_path':
+                    return static::makeIdPath($this->owner->getPrimaryKey());
+                case 'parent_id':
+                    return $this->owner->{$this->parentRelationAttribute};
+            }
+            if (preg_match('|^attribute_(\w+)$|', $name, $am)) {
+                $attribute = $am[1];
+                return $this->owner->{$attribute};
+            }
+            if (preg_match('|^md5_attribute_(\w+)$|', $name, $am)) {
+                $attribute = $am[1];
+                return md5($this->owner->{$attribute});
+            }
+            return '[[' . $name . ']]';
+        }, $path);
     }
 
     /**
@@ -276,7 +334,7 @@ class UploadBehavior extends Behavior
             'entity' => $model->className(),
             'entityId' => $model->getPrimaryKey(),
             'entityAttribute' => $attribute,
-            'parentId' => 0
+          //  'parentId' => 0
         ])
             ->orderBy(['fileOrder' => SORT_ASC])
             ->all();
@@ -303,7 +361,7 @@ class UploadBehavior extends Behavior
             'entity' => $model->className(),
             'entityId' => $model->getPrimaryKey(),
             'entityAttribute' => $attribute,
-            'parentId' => 0
+          //  'parentId' => 0
         ])
             ->orderBy(['fileOrder' => SORT_ASC])
             ->one();
